@@ -22,7 +22,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/gorilla/mux"
-	"github.com/go-playground/validator/v10"
 	"github.com/opentracing/opentracing-go"
 	trace_log "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -114,7 +113,6 @@ type TraceEndpoint struct {
 
 // PostTrace struct specifies the attibutes acceptable in POST gateway_trace_service body
 type PostTrace struct {
-	SequenceID uint32                 `json:"sequence_id"`
 	Timestamp  string                 `json:"timestamp"`
 	Trace      map[string]interface{} `json:"trace"`
 	Type       string                 `json:"type"`
@@ -257,35 +255,6 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			return
 		}
 
-		// Validate that sequence_id is unique per trace
-		validate := validator.New()
-		err = validate.Var(logs, "unique=SequenceID")
-		if err != nil {
-			if _, ok := err.(*validator.InvalidValidationError); ok {
-				logger.Warn("InvalidValidationError", zap.Any("error", err))
-			} else {
-				for _, err := range err.(validator.ValidationErrors) {
-					if err.Param() == "SequenceID" {
-						w.Header().Set("Content-Type", "application/json; charset=utf8")
-						w.WriteHeader(http.StatusBadRequest)
-						io.WriteString(w, encodePublicErrorObject(http.StatusBadRequest, StatusBadRequestErrType, "Invalid log sequence.", "sequence_id", "Sequence id must be unique for every entry", requestID))
-
-						logger.Warn("Validation error occured.", zap.Any("error", err), zap.Int("response_code", http.StatusBadRequest))
-
-						span.LogFields(
-							trace_log.String("event", "error"),
-							trace_log.String("message", "validation error occured"),
-						)
-
-						timer.ObserveDuration()
-						prometheusPostRequestErrorCounter.Inc()
-
-						return
-					}
-				}
-			}
-		}
-
 		// Handle the device id
 		deviceID := r.Header.Get("X-WigWag-RelayID")
 		if len(deviceID) == 0 {
@@ -355,7 +324,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				return
 			}
 
-			muuid := traceEndpoint.UUIDGenerator.UUIDFromSeqNum(log.SequenceID)
+			muuid := traceEndpoint.UUIDGenerator.UUID()
 
 			Logs[index] = storage.Trace {
 				ID             : muuid.String(),
