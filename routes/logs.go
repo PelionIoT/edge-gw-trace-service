@@ -13,11 +13,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"edge-gw-trace-service/httputil"
-	edge_log "edge-gw-trace-service/log"
-	"edge-gw-trace-service/services"
-	"edge-gw-trace-service/storage"
-	"edge-gw-trace-service/tracing"
+	"github.com/armPelionEdge/edge-gw-trace-service/httputil"
+	edge_log "github.com/armPelionEdge/edge-gw-trace-service/log"
+	"github.com/armPelionEdge/edge-gw-trace-service/metrics"
+	"github.com/armPelionEdge/edge-gw-trace-service/services"
+	"github.com/armPelionEdge/edge-gw-trace-service/storage"
+	"github.com/armPelionEdge/edge-gw-trace-service/tracing"
 
 	"go.uber.org/zap"
 
@@ -30,64 +31,6 @@ import (
 	"github.com/armPelionEdge/edge-gw-services-go/token"
 	"github.com/armPelionEdge/muuid-go"
 )
-
-// prometheus metrics setup
-var (
-	prometheusPostRequestDurations = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "post_request_durations_seconds",
-		Help:      "The duration of each post request",
-		Buckets:   prometheus.LinearBuckets(0.01, 0.05, 10),
-	})
-
-	prometheusGetRequestDurations = prometheus.NewHistogram(prometheus.HistogramOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "get_request_durations_seconds",
-		Help:      "The duration of each get request",
-		Buckets:   prometheus.LinearBuckets(0.01, 0.05, 10),
-	})
-
-	prometheusPostRequestErrorCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "post_request_error_counter",
-		Help:      "The number of accumalative post errors",
-	})
-
-	prometheusGetRequestErrorCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "get_request_error_counter",
-		Help:      "The number of accumalative get errors",
-	})
-
-	prometheusGetRequestElasticSearchFailureCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "get_request_elastic_search_failure_counter",
-		Help:      "The number of accumalative elastic search failure of get request",
-	})
-
-	prometheusPostRequestElasticSearchFailureCounter = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "post_request_elastic_search_failure_counter",
-		Help:      "The number of accumalative elastic search failure of post request",
-	})
-
-	prometheusPostTraceIndicator = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "gateway_trace_service",
-		Subsystem: "gateway_trace_service",
-		Name:      "post_logs_number_counter",
-		Help:      "The number of accumulative number of posted trace logs",
-	})
-)
-
-func init() {
-	prometheus.MustRegister(prometheusGetRequestDurations, prometheusPostRequestDurations, prometheusPostRequestErrorCounter, prometheusGetRequestErrorCounter, prometheusGetRequestElasticSearchFailureCounter, prometheusPostRequestElasticSearchFailureCounter, prometheusPostTraceIndicator)
-}
 
 const (
 	MinLimit                    = uint64(2)
@@ -190,7 +133,7 @@ func isValidUUID(uuid string) bool {
 func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 	// Route handlers
 	router.HandleFunc("/", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
-		timer := prometheus.NewTimer(prometheusPostRequestDurations)
+		timer := prometheus.NewTimer(metrics.PrometheusPostRequestDurations)
 
 		requestID := r.Header.Get("X-Request-ID")
 		accountID := r.Header.Get("X-Account-ID")
@@ -225,7 +168,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusPostRequestErrorCounter.Inc()
+			metrics.PrometheusPostRequestErrorCounter.Inc()
 
 			return
 		}
@@ -250,7 +193,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusPostRequestErrorCounter.Inc()
+			metrics.PrometheusPostRequestErrorCounter.Inc()
 
 			return
 		}
@@ -271,7 +214,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 
 			timer.ObserveDuration()
 
-			prometheusPostRequestErrorCounter.Inc()
+			metrics.PrometheusPostRequestErrorCounter.Inc()
 
 			return
 		}
@@ -300,7 +243,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusPostRequestErrorCounter.Inc()
+				metrics.PrometheusPostRequestErrorCounter.Inc()
 
 				return
 			}
@@ -319,7 +262,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusPostRequestErrorCounter.Inc()
+				metrics.PrometheusPostRequestErrorCounter.Inc()
 
 				return
 			}
@@ -357,8 +300,8 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusPostRequestErrorCounter.Inc()
-				prometheusPostRequestElasticSearchFailureCounter.Inc()
+				metrics.PrometheusPostRequestErrorCounter.Inc()
+				metrics.PrometheusPostRequestElasticSearchFailureCounter.Inc()
 
 				return
 			}
@@ -366,7 +309,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			logger.Debug("There is nothing to commit.")
 		}
 
-		prometheusPostTraceIndicator.Add(float64(len(logs)))
+		metrics.PrometheusPostTraceIndicator.Add(float64(len(logs)))
 		timer.ObserveDuration()
 
 		w.Header().Set("Content-Type", "application/json; charset=utf8")
@@ -496,7 +439,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusGetRequestErrorCounter.Inc()
+				metrics.PrometheusGetRequestErrorCounter.Inc()
 				return
 			}
 
@@ -516,7 +459,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusGetRequestErrorCounter.Inc()
+				metrics.PrometheusGetRequestErrorCounter.Inc()
 				return
 			}
 		}
@@ -536,7 +479,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusGetRequestErrorCounter.Inc()
+				metrics.PrometheusGetRequestErrorCounter.Inc()
 				return
 			}
 		}
@@ -612,8 +555,8 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusGetRequestErrorCounter.Inc()
-				prometheusGetRequestElasticSearchFailureCounter.Inc()
+				metrics.PrometheusGetRequestErrorCounter.Inc()
+				metrics.PrometheusGetRequestElasticSearchFailureCounter.Inc()
 
 				return
 			}
@@ -635,7 +578,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 
 			return
 		}
@@ -654,7 +597,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 	}
 
 	v3GetRouter.HandleFunc("/v3/device-trace{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
-		timer := prometheus.NewTimer(prometheusGetRequestDurations)
+		timer := prometheus.NewTimer(metrics.PrometheusGetRequestDurations)
 
 		logger := edge_log.WithContext(r.Context(), traceEndpoint.Logger).With(zap.String("url", r.URL.String())).With(zap.String("sub-component", "get-device-trace-handler"))
 
@@ -682,7 +625,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 			return
 		}
 		requestID := armAccessToken.RequestID
@@ -712,7 +655,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				)
 
 				timer.ObserveDuration()
-				prometheusGetRequestErrorCounter.Inc()
+				metrics.PrometheusGetRequestErrorCounter.Inc()
 				return
 			}
 		}
@@ -724,7 +667,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 	})).Methods("GET")
 
 	v3GetRouter.HandleFunc("/v3/devices/{device_id}/trace{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
-		timer := prometheus.NewTimer(prometheusGetRequestDurations)
+		timer := prometheus.NewTimer(metrics.PrometheusGetRequestDurations)
 
 		logger := edge_log.WithContext(r.Context(), traceEndpoint.Logger).With(zap.String("url", r.URL.String())).With(zap.String("sub-component", "get-single-device-trace-handler"))
 
@@ -752,7 +695,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 			return
 		}
 		requestID := armAccessToken.RequestID
@@ -802,7 +745,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			io.WriteString(w, string(pe))
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 
 			return
 		} else {
@@ -821,8 +764,8 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		TraceHandler(span, w, r, timer, devices)
 	})).Methods("GET")
 
-	v3GetRouter.HandleFunc("/v3/device-trace/{trace_id}{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
-		timer := prometheus.NewTimer(prometheusGetRequestDurations)
+	v3GetRouter.HandleFunc("/v3/device-trace/{device_trace_id}{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
+		timer := prometheus.NewTimer(metrics.PrometheusGetRequestDurations)
 
 		logger := edge_log.WithContext(r.Context(), traceEndpoint.Logger).With(zap.String("url", r.URL.String())).With(zap.String("sub-component", "get-specific-trace-handler"))
 
@@ -850,7 +793,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 			return
 		}
 		requestID := armAccessToken.RequestID
@@ -873,15 +816,15 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
-			prometheusGetRequestElasticSearchFailureCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestElasticSearchFailureCounter.Inc()
 
 			return
 		}
 
 		params := mux.Vars(r)
-		id := params["trace_id"]
-		span.SetTag("trace_id", id)
+		id := params["device_trace_id"]
+		span.SetTag("device_trace_id", id)
 
 		var err error
 
@@ -917,8 +860,8 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
-			prometheusGetRequestElasticSearchFailureCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestElasticSearchFailureCounter.Inc()
 
 			return
 		}
@@ -936,7 +879,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 
 			return
 		} else if results.TotalCount > 1 {
@@ -960,7 +903,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 			)
 
 			timer.ObserveDuration()
-			prometheusGetRequestErrorCounter.Inc()
+			metrics.PrometheusGetRequestErrorCounter.Inc()
 
 			return
 		}

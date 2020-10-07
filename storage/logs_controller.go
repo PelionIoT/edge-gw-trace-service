@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"edge-gw-trace-service/httputil"
-	edge_log "edge-gw-trace-service/log"
+	"github.com/armPelionEdge/edge-gw-trace-service/httputil"
+	edge_log "github.com/armPelionEdge/edge-gw-trace-service/log"
 
 	"go.uber.org/zap"
 

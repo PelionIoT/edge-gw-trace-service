@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/url"
 
-	"edge-gw-trace-service/httputil"
+	"github.com/armPelionEdge/edge-gw-trace-service/httputil"
 	"github.com/opentracing/opentracing-go"
 )
 

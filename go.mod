@@ -1,4 +1,4 @@
-module edge-gw-trace-service
+module github.com/armPelionEdge/edge-gw-trace-service
 
 require (
 	github.com/HdrHistogram/hdrhistogram-go v0.9.0 // indirect

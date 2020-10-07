@@ -11,9 +11,9 @@ import (
 	"net/http"
 	"net/url"
 
-	"edge-gw-trace-service/httputil"
-	"edge-gw-trace-service/tokens"
-	edge_log "edge-gw-trace-service/log"
+	"github.com/armPelionEdge/edge-gw-trace-service/httputil"
+	"github.com/armPelionEdge/edge-gw-trace-service/tokens"
+	edge_log "github.com/armPelionEdge/edge-gw-trace-service/log"
 	"github.com/opentracing/opentracing-go"
 	trace_log "github.com/opentracing/opentracing-go/log"
 	"go.uber.org/zap"
