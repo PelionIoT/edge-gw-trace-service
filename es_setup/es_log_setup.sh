@@ -23,7 +23,9 @@
 #                   "type": "date",
 #                   "format": "strict_date_optional_time||epoch_millis"
 #                   },
-#         "trace": {"type": "object"},
+#         "app_name": {"type": "text"},
+#         "level": {"type": "text"},
+#         "message": {"type": "text"},
 #         "type": {"type": "text"},
 #         "timestring": {
 #                   "type": "date",
@@ -62,7 +64,9 @@ curl -H "Content-Type: application/json" -XPUT "http://localhost:9200/_template/
                   "type": "date",
                   "format": "strict_date_optional_time||epoch_millis"
                   },
-        "trace": {"type": "object"},
+        "app_name": {"type": "text"},
+        "level": {"type": "text"},
+        "message": {"type": "text"},
         "type": {"type": "text"},
         "timestring": {
                   "type": "date",

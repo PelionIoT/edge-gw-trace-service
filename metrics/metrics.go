@@ -6,6 +6,38 @@ import (
 
 // prometheus metrics setup
 var (
+	RequestCounter = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: "gateway_trace_service",
+			Subsystem: "gateway_trace_service",
+			Name:      "http_requests_total",
+			Help:      "A counter for requests.",
+		},
+		[]string{"code", "method"},
+	)
+
+	ResponseDurationHist = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "gateway_trace_service",
+			Subsystem: "gateway_trace_service",
+			Name:      "http_request_duration_seconds",
+			Help:      "A histogram of request latencies.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"code", "method"},
+	)
+
+	WriteHeaderDurationHist = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Namespace: "gateway_trace_service",
+			Subsystem: "gateway_trace_service",
+			Name:      "http_write_header_duration_seconds",
+			Help:      "A histogram of time to first write latencies.",
+			Buckets:   prometheus.DefBuckets,
+		},
+		[]string{"code", "method"},
+	)
+
 	PrometheusPostRequestDurations = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "gateway_trace_service",
 		Subsystem: "gateway_trace_service",
@@ -59,5 +91,5 @@ var (
 )
 
 func init() {
-	prometheus.MustRegister(PrometheusGetRequestDurations, PrometheusPostRequestDurations, PrometheusPostRequestErrorCounter, PrometheusGetRequestErrorCounter, PrometheusGetRequestElasticSearchFailureCounter, PrometheusPostRequestElasticSearchFailureCounter, PrometheusPostTraceIndicator)
+	prometheus.MustRegister(RequestCounter, ResponseDurationHist, WriteHeaderDurationHist, PrometheusGetRequestDurations, PrometheusPostRequestDurations, PrometheusPostRequestErrorCounter, PrometheusGetRequestErrorCounter, PrometheusGetRequestElasticSearchFailureCounter, PrometheusPostRequestElasticSearchFailureCounter, PrometheusPostTraceIndicator)
 }

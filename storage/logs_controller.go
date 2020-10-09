@@ -29,7 +29,8 @@ type Trace struct {
 	ID             string `json:"id"`
 	Timestamp      int64  `json:"timestamp"`
 	Timestring     string `json:"timestring"`
-	Trace          map[string]interface{} `json:"trace"`
+	AppName        string `json:"app_name"`
+	Message        string `json:"message"`
 	Type           string `json:"type"`
 	CloudTimestamp int64  `json:"@timestamp"`
 	CreatedAt      string `json:"created_at"`
@@ -44,7 +45,8 @@ type TraceResponse struct {
 	CreatedAt      string `json:"created_at"`
 	ETag           string `json:"etag"`
 	Timestamp      string `json:"timestamp"`
-	Trace          map[string]interface{} `json:"trace"`
+	AppName        string `json:"app_name"`
+	Message        string `json:"message"`
 	Type           string `json:"type"`
 }
 
@@ -66,8 +68,10 @@ type TraceQuery struct {
 	Account     string        `json:"account_id"`
 	After       time.Time     `json:"after"`
 	Before      time.Time     `json:"before"`
+	AppName     string        `json:"app_name"`
 	Type        string        `json:"type"`
 	Limit       uint64        `json:"limit"`
+	Message     string        `json:"message"`
 	Sort        bool          `json:"sort"`
 	AfterCursor []interface{} `json:"cursor"`
 }
@@ -133,10 +137,22 @@ func buildESBoolQuery(query TraceQuery) *elastic.BoolQuery {
 		esQuery.Must(accountQuery)
 	}
 
+	// Handle the origin query term
+	if query.AppName != "" {
+		originQuery := elastic.NewMatchQuery("app_name", query.AppName)
+		esQuery.Must(originQuery)
+	}
+
 	// Handle the type query term
 	if query.Type != "" {
 		typeQuery := elastic.NewMatchQuery("type", query.Type)
 		esQuery.Must(typeQuery)
+	}
+
+	// Handle the text query term
+	if query.Message != "" {
+		textQuery := elastic.NewMatchQuery("message", query.Message)
+		esQuery.Must(textQuery)
 	}
 
 	// Handle the time range query term, initialize the filter function depends on the given time
@@ -356,8 +372,9 @@ func (esTraceStore *ESTraceStore) SearchDeviceTrace(parentSpan opentracing.Span,
 					CreatedAt  : trace.CreatedAt,
 					ETag       : trace.CreatedAt,
 					Timestamp  : trace.Timestring,
-					Trace      : trace.Trace,
 					Type       : trace.Type,
+					AppName    : trace.AppName,
+					Message    : trace.Message,
 				}
 
 				tracePage.Data = append(tracePage.Data, traceResponse)

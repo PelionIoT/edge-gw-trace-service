@@ -56,8 +56,9 @@ type TraceEndpoint struct {
 
 // PostTrace struct specifies the attibutes acceptable in POST gateway_trace_service body
 type PostTrace struct {
+	AppName    string                 `json:"app_name"`
 	Timestamp  string                 `json:"timestamp"`
-	Trace      map[string]interface{} `json:"trace"`
+	Message    map[string]interface{} `json:"message"`
 	Type       string                 `json:"type"`
 }
 
@@ -129,10 +130,20 @@ func isValidUUID(uuid string) bool {
     return r.MatchString(uuid)
 }
 
+func instrument(handler http.HandlerFunc) http.HandlerFunc {
+	return tracing.InstrumentHandler(
+		promhttp.InstrumentHandlerCounter(metrics.RequestCounter,
+			promhttp.InstrumentHandlerDuration(metrics.ResponseDurationHist,
+				promhttp.InstrumentHandlerTimeToWriteHeader(metrics.WriteHeaderDurationHist, handler),
+			),
+		),
+	)
+}
+
 // Attach function provides the rules of routes for the TraceEndpoint
 func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 	// Route handlers
-	router.HandleFunc("/", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/", instrument(func(w http.ResponseWriter, r *http.Request) {
 		timer := prometheus.NewTimer(metrics.PrometheusPostRequestDurations)
 
 		requestID := r.Header.Get("X-Request-ID")
@@ -269,13 +280,16 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 
 			muuid := traceEndpoint.UUIDGenerator.UUID()
 
+			messageBytes,_ := json.Marshal(log.Message)
+
 			Logs[index] = storage.Trace {
 				ID             : muuid.String(),
 				DeviceID       : deviceID,
 				AccountID      : accountID,
 				Timestamp      : int64(timestamp.UnixNano() / int64(time.Millisecond)),
 				CloudTimestamp : timestampFromUUID(muuid),
-				Trace          : log.Trace,
+				AppName        : log.AppName,
+				Message        : string(messageBytes),
 				Type           : log.Type,
 			}
 		}
@@ -342,7 +356,9 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		var MaxTime time.Time = time.Unix(MaxTimestamp / 1000, (MaxTimestamp % 1000) * 1000000)
 		var afterTime time.Time
 		var beforeTime time.Time
+		var appName string
 		var typ string
+		var message string
 		var after []interface{}
 		var include bool
 		limit := DefaultLimit
@@ -369,10 +385,26 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 					fieldErr = errors.New("Invalid field value. Could not parse as RFC3339 format.")
 				}
 
+			case "app_name__eq":
+				// Handle the app_name parameter
+				if len(query[field][0]) != 0 {
+					appName = query[field][0]
+				} else {
+					fieldErr = errors.New("Invalid field value ''")
+				}
+
 			case "type__eq":
 				// Handle the type parameter
 				if len(query[field][0]) != 0 {
 					typ = query[field][0]
+				} else {
+					fieldErr = errors.New("Invalid field value ''")
+				}
+
+			case "message__eq":
+				// Handle the message parameter
+				if len(query[field][0]) != 0 {
+					message = query[field][0]
 				} else {
 					fieldErr = errors.New("Invalid field value ''")
 				}
@@ -525,8 +557,10 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 				Account    : accountID,
 				After      : afterTime,
 				Before     : beforeTime,
+				AppName    : appName,
 				Type       : typ,
 				Limit      : limit,
+				Message    : message,
 				Sort       : sort,
 				AfterCursor: after,
 			}
@@ -596,7 +630,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 
 	}
 
-	v3GetRouter.HandleFunc("/v3/device-trace{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
+	v3GetRouter.HandleFunc("/v3/device-trace{route:\\/?}", instrument(func(w http.ResponseWriter, r *http.Request) {
 		timer := prometheus.NewTimer(metrics.PrometheusGetRequestDurations)
 
 		logger := edge_log.WithContext(r.Context(), traceEndpoint.Logger).With(zap.String("url", r.URL.String())).With(zap.String("sub-component", "get-device-trace-handler"))
@@ -666,7 +700,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		TraceHandler(span, w, r, timer, devices)
 	})).Methods("GET")
 
-	v3GetRouter.HandleFunc("/v3/devices/{device_id}/trace{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
+	v3GetRouter.HandleFunc("/v3/devices/{device_id}/trace{route:\\/?}", instrument(func(w http.ResponseWriter, r *http.Request) {
 		timer := prometheus.NewTimer(metrics.PrometheusGetRequestDurations)
 
 		logger := edge_log.WithContext(r.Context(), traceEndpoint.Logger).With(zap.String("url", r.URL.String())).With(zap.String("sub-component", "get-single-device-trace-handler"))
@@ -701,6 +735,9 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		requestID := armAccessToken.RequestID
 		accountID := armAccessToken.AccountID
 
+		r, _ = httputil.WithContext(r.Context(), httputil.ContextKeyRequestID, requestID)
+		r, _ = httputil.WithContext(r.Context(), httputil.ContextKeyAccountID, accountID)
+
 		logger = logger.With(zap.String("request_id", requestID)).With(zap.String("account_id", accountID))
 		span.SetTag("request_id", requestID)
 
@@ -715,7 +752,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		)
 
 		// Validate device_id
-		ctx := buildContextWithValue(requestID, accountID)
+		ctx := opentracing.ContextWithSpan(r.Context(), span)
 		deviceData, publicError := traceEndpoint.DeviceDirectory.DeviceRetrieve(span, ctx, deviceID)
 
 		if publicError != nil {
@@ -764,7 +801,7 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		TraceHandler(span, w, r, timer, devices)
 	})).Methods("GET")
 
-	v3GetRouter.HandleFunc("/v3/device-trace/{device_trace_id}{route:\\/?}", tracing.InstrumentHandler(func(w http.ResponseWriter, r *http.Request) {
+	v3GetRouter.HandleFunc("/v3/device-trace/{device_trace_id}{route:\\/?}", instrument(func(w http.ResponseWriter, r *http.Request) {
 		timer := prometheus.NewTimer(metrics.PrometheusGetRequestDurations)
 
 		logger := edge_log.WithContext(r.Context(), traceEndpoint.Logger).With(zap.String("url", r.URL.String())).With(zap.String("sub-component", "get-specific-trace-handler"))
