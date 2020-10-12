@@ -735,8 +735,8 @@ func (traceEndpoint *TraceEndpoint) Attach(router *mux.Router) {
 		requestID := armAccessToken.RequestID
 		accountID := armAccessToken.AccountID
 
-		r, _ = httputil.WithContext(r.Context(), httputil.ContextKeyRequestID, requestID)
-		r, _ = httputil.WithContext(r.Context(), httputil.ContextKeyAccountID, accountID)
+		r, _ = httputil.WithContextValue(r, httputil.ContextKeyRequestID, requestID)
+		r, _ = httputil.WithContextValue(r, httputil.ContextKeyAccountID, accountID)
 
 		logger = logger.With(zap.String("request_id", requestID)).With(zap.String("account_id", accountID))
 		span.SetTag("request_id", requestID)
